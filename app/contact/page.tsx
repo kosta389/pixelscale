@@ -1,13 +1,11 @@
 "use client"
-import { useState } from "react";
 import Navigation from "@/components/navigation/Navigation";
 
 export default function Contact() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
+  // Remove unused state or pass it to Navigation if needed
   return (
     <div className="relative">
-      <Navigation onMenuToggle={(state) => setIsMenuOpen(state)} />
+      <Navigation onMenuToggle={() => {}} />
       <div className="min-h-screen flex items-center justify-center">
         <h1 className="text-4xl font-bold text-white">Contact Page</h1>
       </div>

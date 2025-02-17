@@ -13,6 +13,19 @@ interface ColorRGB {
   b: number;
 }
 
+interface WebGLInternalFormat {
+  internalFormat: number;
+  format: number;
+}
+
+interface ExtWebGL {
+  formatRGBA: WebGLInternalFormat;
+  formatRG: WebGLInternalFormat;
+  formatR: WebGLInternalFormat;
+  halfFloatTexType: number;
+  supportLinearFiltering: boolean;
+}
+
 interface SplashCursorProps {
   SIM_RESOLUTION?: number;
   DYE_RESOLUTION?: number;
@@ -81,11 +94,10 @@ export default function SplashCursor({
     if (!canvas) return; // Guard canvas early
 
     // Pointer and config setup
-    let pointers: Pointer[] = [pointerPrototype()];
+    const pointers: Pointer[] = [pointerPrototype()];
 
     // All these are guaranteed numbers due to destructuring defaults
-    // So we cast them to remove TS warnings:
-    let config = {
+    const config = {
       SIM_RESOLUTION: SIM_RESOLUTION!,
       DYE_RESOLUTION: DYE_RESOLUTION!,
       CAPTURE_RESOLUTION: CAPTURE_RESOLUTION!,
@@ -160,13 +172,17 @@ export default function SplashCursor({
 
       gl.clearColor(0, 0, 0, 1);
 
+      interface HalfFloat {
+        HALF_FLOAT_OES: number;
+      }
+
       const halfFloatTexType = isWebGL2
         ? (gl as WebGL2RenderingContext).HALF_FLOAT
-        : (halfFloat && (halfFloat as any).HALF_FLOAT_OES) || 0;
+        : (halfFloat?.HALF_FLOAT_OES || 0);
 
-      let formatRGBA: any;
-      let formatRG: any;
-      let formatR: any;
+      let formatRGBA: WebGLInternalFormat;
+      let formatRG: WebGLInternalFormat;
+      let formatR: WebGLInternalFormat;
 
       if (isWebGL2) {
         formatRGBA = getSupportedFormat(
@@ -201,7 +217,7 @@ export default function SplashCursor({
           formatR,
           halfFloatTexType,
           supportLinearFiltering,
-        },
+        } as ExtWebGL,
       };
     }
 
@@ -210,7 +226,7 @@ export default function SplashCursor({
       internalFormat: number,
       format: number,
       type: number,
-    ): { internalFormat: number; format: number } | null {
+    ): WebGLInternalFormat {
       if (!supportRenderTextureFormat(gl, internalFormat, format, type)) {
         // For WebGL2 fallback:
         if ("drawBuffers" in gl) {
@@ -221,10 +237,12 @@ export default function SplashCursor({
             case gl2.RG16F:
               return getSupportedFormat(gl2, gl2.RGBA16F, gl2.RGBA, type);
             default:
-              return null;
+              // Fallback to basic format if nothing else works
+              return { internalFormat: gl.RGBA, format: gl.RGBA };
           }
         }
-        return null;
+        // Fallback for WebGL1
+        return { internalFormat: gl.RGBA, format: gl.RGBA };
       }
       return { internalFormat, format };
     }
@@ -322,7 +340,7 @@ export default function SplashCursor({
     }
 
     function getUniforms(program: WebGLProgram) {
-      let uniforms: Record<string, WebGLUniformLocation | null> = {};
+      const uniforms: Record<string, WebGLUniformLocation | null> = {};
       const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
       for (let i = 0; i < uniformCount; i++) {
         const uniformInfo = gl.getActiveUniform(program, i);
@@ -1328,10 +1346,9 @@ export default function SplashCursor({
     }
 
     function correctRadius(radius: number) {
-      // Use non-null assertion (canvas can't be null here)
       const aspectRatio = canvas!.width / canvas!.height;
-      if (aspectRatio > 1) radius *= aspectRatio;
-      return radius;
+      const aspect = aspectRatio > 1 ? aspectRatio : 1;
+      return radius * aspect;
     }
 
     function updatePointerDownData(

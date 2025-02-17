@@ -5,6 +5,7 @@
 */
 
 import { useEffect, useRef } from "react";
+import React from 'react'; // Add this import
 
 class Pixel {
   width: number;
@@ -113,11 +114,13 @@ class Pixel {
   }
 }
 
-function getEffectiveSpeed(value: any, reducedMotion: any) {
+function getEffectiveSpeed(value: number | string, reducedMotion: boolean): number {
   const min = 0;
   const max = 100;
   const throttle = 0.001;
-  const parsed = parseInt(value, 10);
+  // Fix: Ensure value is converted to string before parsing
+  const stringValue = value.toString();
+  const parsed = parseInt(stringValue, 10);
 
   if (parsed <= min || reducedMotion) {
     return min;
@@ -180,6 +183,10 @@ interface VariantConfig {
   noFocus: boolean;
 }
 
+// Add type for the event handlers
+type DragEventHandler = (event: React.DragEvent<HTMLDivElement>) => void;
+type MouseEventHandler = (event: React.MouseEvent<HTMLDivElement>) => void;
+
 export default function PixelCard({
   variant = "default",
   gap,
@@ -188,15 +195,20 @@ export default function PixelCard({
   noFocus,
   className = "",
   children,
-}: PixelCardProps): JSX.Element {
+}: PixelCardProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pixelsRef = useRef<Pixel[]>([]);
-  const animationRef = useRef<any>(null);
+  const animationRef = useRef<number | null>(null);
   const timePreviousRef = useRef(performance.now());
-  const reducedMotion = useRef(
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  ).current;
+  // Fix: Initialize reducedMotion with a default value
+  const reducedMotion = useRef(false);
+
+  // Add useEffect to handle window-dependent initialization
+  useEffect(() => {
+    reducedMotion.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    initPixels();
+  }, []);
 
   const variantCfg: VariantConfig = VARIANTS[variant] || VARIANTS.default;
   const finalGap = gap ?? variantCfg.gap;
@@ -219,16 +231,19 @@ export default function PixelCard({
 
     const colorsArray = finalColors.split(",");
     const pxs = [];
-    for (let x = 0; x < width; x += parseInt(finalGap.toString(), 10)) {
-      for (let y = 0; y < height; y += parseInt(finalGap.toString(), 10)) {
-        const color =
-          colorsArray[Math.floor(Math.random() * colorsArray.length)];
-
+    // Fix: Ensure gap is converted to number
+    const gapSize = typeof finalGap === 'string' ? parseInt(finalGap, 10) : finalGap;
+    
+    for (let x = 0; x < width; x += gapSize) {
+      for (let y = 0; y < height; y += gapSize) {
+        const color = colorsArray[Math.floor(Math.random() * colorsArray.length)];
         const dx = x - width / 2;
         const dy = y - height / 2;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const delay = reducedMotion ? 0 : distance;
         if (!ctx) return;
+        // Fix: Use .current to get the boolean value from the ref
+        const effectiveSpeed = getEffectiveSpeed(finalSpeed.toString(), reducedMotion.current);
         pxs.push(
           new Pixel(
             canvasRef.current,
@@ -236,7 +251,7 @@ export default function PixelCard({
             x,
             y,
             color,
-            getEffectiveSpeed(finalSpeed, reducedMotion),
+            effectiveSpeed,
             delay,
           ),
         );
@@ -246,7 +261,10 @@ export default function PixelCard({
   };
 
   const doAnimate = (fnName: keyof Pixel) => {
-    animationRef.current = requestAnimationFrame(() => doAnimate(fnName));
+    // Fix: Properly handle the animation frame ID
+    const frameId = requestAnimationFrame(() => doAnimate(fnName));
+    animationRef.current = frameId;
+    
     const timeNow = performance.now();
     const timePassed = timeNow - timePreviousRef.current;
     const timeInterval = 1000 / 60; // ~60 FPS
@@ -262,7 +280,7 @@ export default function PixelCard({
     let allIdle = true;
     for (let i = 0; i < pixelsRef.current.length; i++) {
       const pixel = pixelsRef.current[i];
-      // @ts-ignore
+      // @ts-expect-error
       pixel[fnName]();
       if (!pixel.isIdle) {
         allIdle = false;
@@ -274,7 +292,9 @@ export default function PixelCard({
   };
 
   const handleAnimation = (name: keyof Pixel) => {
-    cancelAnimationFrame(animationRef.current);
+    if (animationRef.current !== null) {
+      cancelAnimationFrame(animationRef.current);
+    }
     animationRef.current = requestAnimationFrame(() => doAnimate(name));
   };
 
@@ -299,7 +319,9 @@ export default function PixelCard({
     }
     return () => {
       observer.disconnect();
-      cancelAnimationFrame(animationRef.current);
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finalGap, finalSpeed, finalColors, finalNoFocus]);
